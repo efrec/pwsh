@@ -3,11 +3,11 @@
 #% Description	:On Windows OS, uses the local time to set the system
 #%   and application themes to either light or dark mode.
 #% Library		:
-#% Version		:00.01.00 // 2022-10-25
+#% Version		:00.01.01 // 2022-10-26
 #% Author		:Eric Frechette
 #% Email		:efrec.dev@gmail.com
 ###############################################################################
-#% Code Review	:[passing | failing | needed | old | ...] // yyyy-mm-dd
+#% Code Review	:passing // 2022-10-26
 ###############################################################################
 
 #------------------------------------------------------------------------------
@@ -36,7 +36,7 @@ $syst = 'SystemUsesLightTheme'
 #---- Encapsulate -------------------------------------------------------------
 
 # Fixes the $daylight variable, in case you're a strange person.
-function Resolve-DaylightTimeSetup ([array[timespan]] $times) {
+function Resolve-DaylightTimeSetup ([array] $times) {
     $times ??= $daylight
     if (!$times -or $times.Count -ne 2) {
         return @(
@@ -45,21 +45,18 @@ function Resolve-DaylightTimeSetup ([array[timespan]] $times) {
         );
     }
 
+    # Prevent spans longer than 24 hours. Easiest modulo on TimeSpan uses ticks:
     $daily_ticks = [timespan]::new(24, 0, 0).Ticks
     $times[0] = [timespan]::new($daylight[0].Ticks % $daily_ticks)
     $times[1] = [timespan]::new($daylight[1].Ticks % $daily_ticks)
 
-    return @(
-        [math]::Min($times[0], $times[1]).
-        [math]::Max($times[0], $times[1])
-    )
+    return $times | Sort-Object
 }
 
 # Checks if our local time is in daylight (according to $daylight).
 function Test-DaylightTime ([timespan] $time) {
     $time ??= (Get-Date).TimeOfDay
-    $start = [math]::Min($daylight[0], $daylight[1])
-    $end = [math]::Max($daylight[0], $daylight[1])
+    $start = $daylight[0]; $end = $daylight[1];
     return ($time -ge $start -and $time -le $end)
 }
 
@@ -68,7 +65,7 @@ function Test-DaylightTime ([timespan] $time) {
 #---- Execute -----------------------------------------------------------------
 
 $daylight = Resolve-DaylightTimeSetup $daylight
-$theme = [ThemeLuminosity] [int] (Test-DaylightTime)
+$theme = [ThemeLuminosity] [int] (Test-DaylightTime) # todo: asserts should just be asserts
 $value = [int] $theme
 Set-ItemProperty -Path $path -Name $apps -Value $value || exit 1
 Set-ItemProperty -Path $path -Name $syst -Value $value || exit 2

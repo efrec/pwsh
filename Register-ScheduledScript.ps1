@@ -69,7 +69,8 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
 
 # Register the task.
 Register-ScheduledTask -TaskPath $task_path -TaskName $task_name `
-    -Principal $principal -Trigger $triggers -Settings $settings || exit 2
+    -Action $action -Principal $principal `
+    -Trigger $triggers -Settings $settings || exit 2
 
 
 #------------------------------------------------------------------------------

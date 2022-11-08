@@ -13,8 +13,9 @@ Working well in Windows Terminal, for starters.
 ## MultilineEditMode.ps1
 If you're learning the CLI after getting comfortable in IDEs, this multiline editing mode can help you out.
 It also gives a better experience with pwsh's type checking and other "modern shell" features, directly from the console window.
-Normally, pwsh would try to run the command without validation, clearing your prompt, cluttering your history with mistakes, and resetting your cursor position.
-With this script, when you hit Enter to run an invalid or incorrectly formatted command, a syntax error is displayed and your cursor moves right to its location.
+Normally, pwsh will run an invalid or incorrectly formatted command without validation; this clears your prompt, clutters your history with mistakes, and resets your cursor position.
+With this script, when you run a bad command, a syntax error is displayed and your cursor moves right to its location for a faster, easier fix.
+Powered by PSReadLine, so it is highly configurable to your needs, with a bit of research.
 
 ## Register-ScheduledScript
 Creates a scheduled task that runs a .ps1 script in PowerShell v6+.

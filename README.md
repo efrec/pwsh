@@ -11,11 +11,10 @@ Some characters used may not be safe or display properly, even in monospace.
 Working well in Windows Terminal, for starters.
 
 ## MultilineEditMode.ps1
-Easy multiline commands right from the console window.
-"Multiline mode" changes the behavior of the Enter key in a few ways; read the file for more info.
-There's nothing like an IDE, but PSReadLine has a few strong utilities that help with daily cli use.
-In particular, this performs validation when you run a command.
-For example, if you input imbalanced parens, this displays your error message and moves your cursor to the end of the offending region.
+If you're learning the CLI after getting comfortable in IDEs, this multiline editing mode can help you out.
+It also gives a better experience with pwsh's type checking and other "modern shell" features, directly from the console window.
+Normally, pwsh would try to run the command without validation, clearing your prompt, cluttering your history with mistakes, and resetting your cursor position.
+With this script, when you hit Enter to run an invalid or incorrectly formatted command, a syntax error is displayed and your cursor moves right to its location.
 
 ## Register-ScheduledScript
 Creates a scheduled task that runs a .ps1 script in PowerShell v6+.

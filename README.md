@@ -15,7 +15,7 @@ If you're learning the CLI after getting comfortable in IDEs, this multiline edi
 It also gives a better experience with pwsh's type checking and other "modern shell" features, directly from the console window.
 
 Normally, pwsh will run an invalid or incorrectly formatted command without validation; this clears your prompt, clutters your history with mistakes, and resets your cursor position.
-With this script, when you run a bad command, a syntax error is displayed and your cursor moves right to its location for a faster, easier fix.
+With this script, when you run a bad command, a syntax error is displayed and your cursor moves to the end of its context—for a faster, easier fix.
 Powered by PSReadLine, so it is highly configurable to your needs, with a bit of research.
 
 ## Register-ScheduledScript

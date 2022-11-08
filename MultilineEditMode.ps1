@@ -8,19 +8,20 @@
 
 $mutliline_expand = {
     param($key)
+
     # Get the current contents of the prompt.
     $line = $cursor = $null;
     [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref] $line, [ref] $cursor);
-    # If buffer is empty, except for newlines...
+
+    # If buffer is empty, except for newlines:
     if ($line -match '^[\r\n]*$') {
-        # ...move to the middle of the buffer, then insert another line.
-        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition(
-            [System.Math]::Floor(([double] $line.Length) / 2)
-        );
+        # move to the middle of the buffer, then add another line.
+        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition(($line.Length - 1) / 2);
         [Microsoft.PowerShell.PSConsoleReadLine]::InsertLineBelow();
     }
     # Commands preceded with 2 spaces (exactly) are being buried by user:
     elseif ($line -match '\A[ ]{2}\S') {
+        # ! Accept input without validation? May leave undesired error traces of sensitive commands.
         [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine();
     }
     else {

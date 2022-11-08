@@ -1,7 +1,7 @@
 # Add to your profile to get some interesting multiline command editing from the console.
 
 # This key handler features:
-# (1) Command validation. Checks for mismatched parens, incorrect operators, etc.
+# (1) Command validation. Checks for mistyped commands, mismatched parens, incorrect operators, etc.
 # (2) Vertically expands. Hitting Enter repeatedly adds new lines, like Shift+Enter.
 # (3) Command trimming. Extra vertical space is removed when running commands.
 # (4) Preserves buried commands. Two spaces before a command is commonly hidden from history.

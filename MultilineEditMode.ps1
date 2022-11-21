@@ -14,7 +14,7 @@ $mutliline_expand = {
     [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref] $line, [ref] $cursor);
 
     # If buffer is empty, except for newlines:
-    if ($line -match '^[\r\n]*$') {
+    if ($line -match '\A[\r\n]*\z') {
         # move to the middle of the buffer, then add another line.
         [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition(($line.Length - 1) / 2);
         [Microsoft.PowerShell.PSConsoleReadLine]::InsertLineBelow();

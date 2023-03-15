@@ -27,6 +27,7 @@ enum BmpToAsciiType {
     https://github.com/efrec/pwsh
 .EXAMPLE
     ConvertTo-AsciiArt -Path C:\Users\Pictures\she_must_be_that.jpg -MaxWidth 60 -BmpToAsciiType Subpixel -BrightnessShapeRatio 0.5 -DisplayRatio 2.2
+ 
 `````````´`´´´´´´´´´´´´´´´´´´´´.⁖⁖...´´´´´´´´.´´.´´´.´´´..´⁖
 .............................veZ7¾%%¾e\⁖....................
 ........................._vwa⩩⩩@%%@@@E@¾⌗‛..................
@@ -51,6 +52,50 @@ enum BmpToAsciiType {
 .                     .dHMM@¾++⌗⁖`´         ´ZZ¾¾/+`´?\. ...
 . .                  .⩩EP+Z%YY>^⁖´.          J@%Z\<\.\o\....
 ..   .              ./P+++++++¼?'´           dZ%Y>d¼:d%%:...
+
+.EXAMPLE
+    ConvertTo-AsciiArt -Path "C:\Users\Pictures\Giau Pass, Italy.jpg" -MaxWidth 80 -BmpToAsciiType Subpixel -BrightnessShapeRatio 0 -DisplayRatio 1.3
+PP%%%%%%%%%%%%%%%%%%%PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP¾¾¾¾¾
+%%%666666666666%%%%%%%%%%%%%%%%%%%%PPPPPPPPPPPPPP%%%%%%%%%%%%%%%%%%%%%%%PPPPPPPP
+6666666666666666666666666666%%%%%%%%%%%%%%%%%%%%%%%%%%%%%66666666666%%%%%%%%%%%P
+6666666666666666666666666666666666666666666666666666666666666666666666666666%%%%
+66666⩩⩩⩩⩩⩩⩩⩩666666666666666666666666666666666666666666666666666666666666666666
+⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩66666666666666666666666666666666666666666666666666
+⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩666666
+⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩
+⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩EEEE⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩
+EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩
+EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE⩩⩩⩩⩩⩩⩩⩩
+EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE⩩⩩⩩
+EEEEMMMMMMMMMMMMMMMMMEMEEMEEEEEEEEEEEEEEEE⩩6EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMME⩩6oPEMMMMMMMMMMEMMMMMMMMMEEEEEEEEEEEEEE
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMME⩩P6¾>7EMMMMMMMMMMMMMMMMMMMMMMMMMMMEEEEEEE
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMEMMM>Y¾%7Pv_>MMMMMMMMMMMMMMMMMMMMMMMMMMMEEEEEE
+MMMMMMMMMMMMMMMMMMMMMMMMMMMEMMMMMEY66P*¾Y%bPo‛v?⩩EMMMMMMMMMMMMMMMMMMMMMMMMMMEEEE
+MMMMMMMMMMMMMMMMMMMMMMMMMM6obMMMEYhPLJd%¾%bo³_v‾‛o>MMMEPMMMMMMMMMMMMMMMMMMMEEEEE
+MMMMMMMMMMMMMMMMMMHHHHHHHEYv?*MEbvL7*Y77>Y¾J_'*‛`‾‛*YP%⩩b%Y6EMMMMMMMMMMMMMEEEEEE
+MMMMMMMMMHHHHHHM%bEEM6o>dY>dhv*vvhbd%7JYYY?b'_³‛‛``‾‾oLho*oo?*7MMMMME⩩MMMEEEEEEE
+MMMMMHHHHHHHE%dYovv_‛v?>P7dL>'ohd¾¾6>*>P¾b‛‛*‛''`‛`‾`‾‛*>**od??v?dY66JJ6⩩6⩩66⩩⩩
+*ooLbbbY666b³'‛__‛__vhhho?*?>obo*oLbhhhLhY7b*‛‾`´´‾`‛'´'vh*??v*vv³v?**??*o*???vv
+vvvv?vvvv_³‛'‛‛³‛v_`´`‾‛‛v**ov?oohovvob¾P¾J7Yh_´´´`___‛`´'v``‾?‛_³?*_‛_vvvvvvvv_
+'''‛³vv'‾‛‛_v_‛‾'‾''‾`³oo*v_v?h*__‛³>7¾Yb>>o*ov_'`´´´´´`´´`'´  ´´´´´'³‛‛'‾‛‛³_‛‛
+´´´´´´‾´‾''`´‾_v'__‛`‛*o_*vvo*_'³‾'obbo**?³_‛‾``´´`‾‾´´´´´´´``´´´´´´´´´´´´´´´´´´
+´´´´´´´´´´‾_?³‾'³'`voov_‛o??_'‾‛v_o*?v_'´´´´´´´´´´`‾'³?`´´´´´´´´´    ´ ´´´´´´´´´
+´´´´´‾‾''`´`´`'`‾³oovvvv?vvv'''‛vv_³‛´´´`´`´´´´´´´´´´´´?`´´´´´´´´´       ´´´  ´´
+´´´´´´´´´´`´‾³³v*??‛'‛'‛‾‾´´´``´``´`´´´``‾''```´`´´´´```‛v´´´´´´´´´´´          ´
+´´´´´´´´´´´`´´´´´´´´´´´´´´´´``‾``‾''‾‾‾````‾``'``´´´´ ´´´´*´´´´´´´´´´´´ ´´´
+´´´´´`´´´´´´´´´´´´´´``´```‾‾`‾'‾‾`´´`‾'```´´´´´³_'´´´´`´´´´³‾´´´´´´´´´´´´´´´
+´´´´´´´´‛‛‛´`´´```'`´´´´```´´´´´´´´```´´´´´´´´´‾‛‛³‛‾´´``'³´´‛_´´´´´´´´´´´´´´´´´
+   ´´´`‾´´´´´´´´´```´´´´‾'‾`´´´´`````‾''‛'‾`´´´´´‛___³‛³__‛'`‾_vv_'`´‛_´´´´´´´´´
+       ´´´´´´´´´´´´´´´´`´`´´´´´´´´´´´´´´´´´´´´´´´´‾´‛_____‾‾''`____‾''‾''‾´´´´´´
+      ´´´´´  ´´´´´´´´´´´´´´``´´´´´´´´´´´´´´´´´´´´´´‛‾_³v'‾''v³**‛‾‾`´´´´´´´´´´´´
+             ´    ´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´''`'``´´´´´´´´´´´´´´´´´
+    ´       ´´´  ´´´  ´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´
+  ´´        ´´´´ ´´´´    ´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´ ´
+    ´´´    ´ ´´´´´´´´´´´´´´´ ´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´ ´´´´´´´    ´´´  ´´
+
+git really doesn't like the ⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩⩩'s, so I edited some out
+
 #>
 function ConvertTo-AsciiArt {
     [Alias("asciiart", "aa")]

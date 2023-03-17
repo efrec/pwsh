@@ -1,21 +1,24 @@
 # pwsh
-For the truly misc. scripts
+A handful of truly miscellaneous pwsh scripts.
+These had no home while I was working on them + setting up this github acct.
 
-## auto-dark-mode.ps1
-PowerShell script to set as a Scheduled Task, for changing your system and app theme to light mode during the day, and to dark mode during nighttime and twilight hours.
-It favors dark mode slightly, for preserving your eyes.
+#### auto-dark-mode.ps1
+Simple script to set up as a scheduled task.
+Changes both your system and app theme to light mode during the day and to dark mode during darker hours.
 
-## ConvertTo-AsciiArt
-Image to "ASCII" (definitely not ASCII) artwork. Uses a nebulous brightness comparison and produces blobby results.
-Some characters used may not be safe or display properly, even in monospace.
-Working well in Windows Terminal, for starters.
+#### ConvertTo-AsciiArt
+Image to text art; definitely no longer ASCII-only.
+Runs a comparison of pixel brightness against the relative areas of a list of characters.
+Optionally, runs a comparison of the surrounding pixels/subpixels to match the shapes of asymmetric characters.
+Different fonts use different areas, shapes, and proportions, which will impact the visual quality.
 
-## CurrentUserAllHosts.ps1
-One of the files that constitutes your pwsh profile. Loaded whenever you start a new terminal, just like your profile.
-If you're learning the CLI after getting comfortable in IDEs, this "multiline" (-ish) editing mode can help you out.
-It also gives a better experience with pwsh's type checking and other "modern shell" features, natively in the console.
-This is powered by PSReadLine, so should be configurable to your needs. Doesn't support vi mode yet.
+#### CurrentUserAllHosts.ps1
+One of the files that constitutes your pwsh profile.
+Loaded whenever you start a new terminal.
+This provides a better command editing experience directly in Windows Terminal without switching to vi mode.
+It also gives a better experience with pwsh's type checking and other nominally modern-shell features, powered entirely by PSReadLine.
+Doesn't support vi mode yet, but should.
 
-## Register-ScheduledScript
+#### Register-ScheduledScript
 Creates a scheduled task that runs a .ps1 script in PowerShell v6+.
-It's intended to show how the process works rather than be comprehensive (which is far more awkward than just learning how to use scheduled tasks).
+It's intended to show how the process works rather than be comprehensive—which would be more awkward than just learning how to use scheduled tasks.

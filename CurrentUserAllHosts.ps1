@@ -1,123 +1,113 @@
 # You can add this CurrentUserAllHosts file to your profile for some extra text handling while in the console.
-# This partial profile is focused on giving a consistent cli dx between vscode and win terminal.
+# This (partial) profile is focused on giving a consistent dx-in-cli between vscode and windows terminal.
 
 # It features mostly key handling, including:
 # (1) Command validation. Checks for mistyped commands, mismatched parens, incorrect operators, etc.
 # (2) Auto-balancing. Inserts paired quotes and braces, moves cursor to unbalanced positions in expressions.
-# (3) Vertical expansion. Hitting Enter repeatedly adds new lines, like Shift+Enter. I like visual space.
+# (3) Vertical expansion. Hitting Enter repeatedly adds new lines, like Shift+Enter. I'm a visual editor.
 # (4) Command trimming. Extra vertical space is removed when running commands. I don't like pointless pad.
 # (5) "Buried" commands. Follows practice of two spaces before a command being hidden from history.
 
-
 # # PROMPT
 
-. 'C:\Users\efrec\Documents\VSCode\admin\profile\prompt.ps1'
-Set-PSReadLineOption -ContinuationPrompt '< ' # inverse of '> '
+. 'C:\path\to\your\profile\prompt.ps1'
+Set-PSReadLineOption -ContinuationPrompt '< '
 
 
 # # KEY HANDLING
 
-#* General replacements
-# Remove Terminal's Ctrl+Shift+V (it does a normal Paste - incomprehensibly vile) and use this:
-#! Problem: Insert() adds ctrl+m command characters at some (not all?) line endings. Need to know the rule to change the behavior.
+#* General handlers
+
+# Remove Terminal's Ctrl+Shift+V (it does a normal Paste - just vile)
 Set-PSReadLineKeyHandler -Chord Ctrl+Shift+V `
-    -BriefDescription PasteValuesAsInsert `
+    -BriefDescription PasteValuesOnly `
     -Description 'Pastes from the clipboard without screwing it up horrifically (as is default)' `
     -ScriptBlock {
-    $values = (Get-Clipboard -Text) -join '\n'
+    $values = (Get-Clipboard -Text) -join "`n" #! \n is treated as Ctrl+M in terminal
     [Microsoft.PowerShell.PSConsoleReadLine]::Insert($values)
 }
 
-#* Smart insertion and deletion, especially for matching pairs.
-# Also includes a Ctrl+. chord to replace aliases with their resolved commands.
-# todo: Ctrl+["'] for cycling unquote/cycle quote type
+#* Smart insert, replace, and delete, especially for matching pairs.
 
-# todo: detect, insert, expand herestrings
+# We have to test for both opening and closing strings when inserting quotation marks intelligently.
+# todo: Needs to be split into a CycleQuotes handler (Ctrl+['"])
 Set-PSReadLineKeyHandler -Chord '"', "'" `
     -BriefDescription InsertPairedQuote `
     -Description 'Insert paired quotes if not already inside a quoted string. Swap single/double quotes with a string selected.' `
     -ScriptBlock {
     param($key, $arg)
     $mark = $key.KeyChar
-
+    
+    # Get literally everything, apparently
+    $ast = $tokens = $parseErrors = $null
+    [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$ast, [ref]$tokens, [ref]$parseErrors, [ref]$null)
     $selectionStart = $selectionLength = $null
     [Microsoft.PowerShell.PSConsoleReadLine]::GetSelectionState([ref]$selectionStart, [ref]$selectionLength)
     $line = $cursor = $null
     [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
     
-    # If text is selected, just quote it without any smarts.
-    # We're still smart enough to replace start/end quotation pairs when at extents of highlight region.
-    # todo: detect if selection is forward or backward and move cursor to the correct side
+    # Handle selections
     if ($selectionStart -ne -1) {
-        # todo: Regex should be replaced with tokenized input; see later example for token logic.
-        [Microsoft.PowerShell.PSConsoleReadLine]::Replace(
-            $selectionStart,
-            $selectionLength,
-            $mark + [regex]::Replace($line.SubString($selectionStart, $selectionLength), "\A(['`"])(.*)(\1)\z", '$2') + $mark
-        )
-        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($selectionStart + $selectionLength + 2)
+        if ($selectionLength -eq 1 -and $line[$selectionStart] -eq $mark) {
+            [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($selectionStart + 1)
+            return
+        }
+        # Wrap string in quotes, swapping quote types if appropriate, and move to end of string
+        if ($selectionToken = Get-TokenFromSelection $tokens $selectionStart $selectionLength) {
+            $pattern = "^|$"
+            $replace = "$mark"
+            $offset = 2
+            if ($selectionToken -is [StringToken]) {
+                $pattern = "\A(['`"])(.*)(\1)\z"
+                $replace = "$mark`$2$mark"
+                $offset = 0
+            }
+            [Microsoft.PowerShell.PSConsoleReadLine]::Replace(
+                $selectionStart,
+                $selectionLength,
+                [regex]::Replace($line.SubString($selectionStart, $selectionLength), $pattern, $replace)
+            )
+            [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($selectionStart + $selectionLength + $offset)
+            return
+        }
+        
+        [Microsoft.PowerShell.PSConsoleReadLine]::SelfInsert($key, $arg)
         return
     }
 
-    $ast = $null
-    $tokens = $null
-    $parseErrors = $null
-    [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$ast, [ref]$tokens, [ref]$parseErrors, [ref]$null)
+    # Handle normal cursor
+    $token = Get-TokenFromCursor $tokens $cursor
 
-    function FindToken {
-        param($tokens, $cursor)
-        foreach ($token in $tokens) {
-            if ($cursor -lt $token.Extent.StartOffset) { continue }
-            if ($cursor -lt $token.Extent.EndOffset) {
-                $result = $token
-                $token = $token -as [StringExpandableToken] # for get_NestedTokens
-                if ($token) {
-                    $nested = FindToken $token.NestedTokens $cursor
-                    if ($nested) { $result = $nested }
-                }
-                return $result
-            }
-        }
-        return $null
-    }
-
-    $token = FindToken $tokens $cursor
-
-    # If we're on or inside a *quoted* string token (so not generic), we need to be smarter
     if ($token -is [StringToken] -and $token.Kind -ne [TokenKind]::Generic) {
         # If we're at the start of the string, assume we're inserting a new string
         if ($token.Extent.StartOffset -eq $cursor) {
             [Microsoft.PowerShell.PSConsoleReadLine]::Insert("$mark")
-            [Microsoft.PowerShell.PSConsoleReadLine]::Insert("$mark ") # separate undo entry lets us ctrl+z this
-            [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 1) # between the new marks
+            [Microsoft.PowerShell.PSConsoleReadLine]::Insert("$mark ") # separate entry on undo stack lets us ctrl+z this
+            [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 1)
             return
         }
-        # If we're at the end of the string, move over the closing quote if present.
+        # If we're at the end of the string and the quotes match, move over the quote
         if ($token.Extent.EndOffset -eq ($cursor + 1) -and $line[$cursor] -eq $mark) {
             [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 1)
             return
         }
     }
 
-    if ($null -eq $token -or
-        $token.Kind -in [TokenKind]::RParen, [TokenKind]::RCurly, [TokenKind]::RBracket) {
-        # ! Disregards escaped and commented quotation marks
+    if ($cursor -eq $line.length) {
         if ($line[0..$cursor].Where{ $_ -eq $mark }.Count % 2 -eq 1) {
-            # Odd number of quotes before the cursor, insert a single quote
             [Microsoft.PowerShell.PSConsoleReadLine]::Insert($mark)
         }
         else {
-            # Insert matching quotes, move cursor to be in between the quotes
             [Microsoft.PowerShell.PSConsoleReadLine]::Insert("$mark$mark")
             [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 1)
         }
         return
     }
 
-    # If cursor is at the start of a token, enclose it in quotes.
-    # todo: move to Ctrl+["'] key handler for cycling quote/unquote
+    # If cursor is at the start of certain tokens, enclose token in quotes.
+    # todo: move to a Ctrl+["'] key handler for cycling quote/unquote
     if ($token.Extent.StartOffset -eq $cursor) {
-        if ($token.Kind -in [TokenKind]::Generic, [TokenKind]::Identifier, [TokenKind]::Variable -or
+        if ($token.Kind -in [TokenKind]::Identifier, [TokenKind]::Variable -or
             $token.TokenFlags.hasFlag([TokenFlags]::Keyword)) {
             $end = $token.Extent.EndOffset
             $len = $end - $cursor
@@ -126,20 +116,18 @@ Set-PSReadLineKeyHandler -Chord '"', "'" `
             return
         }
     }
-    # If cursor is immediately after the end of a token, enclose the token in quotes.
-    # todo
-    else {
-        $token = FindToken $tokens ($cursor - 1)
-        write-host $token.Text
-        if ($token -and $token.Extent.EndOffset -eq $cursor - 1) {
-            if ($token.Kind -in [TokenKind]::Generic, [TokenKind]::Identifier, [TokenKind]::Variable -or
-                $token.TokenFlags.hasFlag([TokenFlags]::Keyword)) {
-                $start = $token.Extent.StartOffset
-                $len = $cursor - $start
-                [Microsoft.PowerShell.PSConsoleReadLine]::Replace($start, $len, $mark + $line.SubString($start, $len) + $mark)
-                [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 2)
-                return
-            }
+    
+    # If cursor is immediately after the end of certain tokens, enclose the token in quotes.
+    # todo: move to a Ctrl+["'] key handler for cycling quote/unquote
+    $token = Get-TokenFromCursor $tokens ($cursor - 1)
+    if ($token -and $token.Extent.EndOffset -eq $cursor - 1) {
+        if ($token.Kind -in [TokenKind]::Generic, [TokenKind]::Identifier, [TokenKind]::Variable -or
+            $token.TokenFlags.hasFlag([TokenFlags]::Keyword)) {
+            $start = $token.Extent.StartOffset
+            $len = $cursor - $start
+            [Microsoft.PowerShell.PSConsoleReadLine]::Replace($start, $len, $mark + $line.SubString($start, $len) + $mark)
+            [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 2)
+            return
         }
     }
 
@@ -161,20 +149,17 @@ Set-PSReadLineKeyHandler -Key '(', '{', '[' `
 
     $selectionStart = $selectionLength = $null
     [Microsoft.PowerShell.PSConsoleReadLine]::GetSelectionState([ref]$selectionStart, [ref]$selectionLength)
-
     $line = $cursor = $null
     [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
     
     if ($selectionStart -ne -1) {
-        # Text is selected, wrap it in brackets
         [Microsoft.PowerShell.PSConsoleReadLine]::Replace($selectionStart, $selectionLength, $key.KeyChar + $line.SubString($selectionStart, $selectionLength) + $closeChar)
         [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($selectionStart + $selectionLength + 2)
+        return
     }
-    else {
-        # No text is selected, insert a pair
-        [Microsoft.PowerShell.PSConsoleReadLine]::Insert("$($key.KeyChar)$closeChar")
-        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 1)
-    }
+
+    [Microsoft.PowerShell.PSConsoleReadLine]::Insert("$($key.KeyChar)$closeChar")
+    [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 1)
 }
 
 Set-PSReadLineKeyHandler -Key ')', ']', '}' `
@@ -194,33 +179,26 @@ Set-PSReadLineKeyHandler -Key ')', ']', '}' `
     }
 }
 
-# todo: resolve parameter aliases
+# todo: also expand parameter names
 Set-PSReadLineKeyHandler -Key "Ctrl+." `
     -BriefDescription ResolveCommandAliases `
     -LongDescription "Resolve all aliases to their full command. Only works for builtin aliases." `
     -ScriptBlock {
-    $ast = $null
-    $tokens = $null
-    $errors = $null
-    $cursor = $null
+    $ast = $tokens = $errors = $cursor = $null
     [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$ast, [ref]$tokens, [ref]$errors, [ref]$cursor)
 
     $startAdjustment = 0
     foreach ($token in $tokens) {
         if ($token.TokenFlags -band [TokenFlags]::CommandName) {
-            $alias = $ExecutionContext.InvokeCommand.GetCommand($token.Extent.Text, 'Alias')
-            if ($alias -ne $null) {
-                $resolvedCommand = $alias.ResolvedCommandName
-                if ($resolvedCommand -ne $null) {
+            if ($alias = $ExecutionContext.InvokeCommand.GetCommand($token.Extent.Text, 'Alias')) {
+                if ($resolvedCommand = $alias.ResolvedCommandName) {
                     $extent = $token.Extent
                     $length = $extent.EndOffset - $extent.StartOffset
                     [Microsoft.PowerShell.PSConsoleReadLine]::Replace(
                         $extent.StartOffset + $startAdjustment,
                         $length,
-                        $resolvedCommand)
-
-                    # Our copy of the tokens won't have been updated, so we need to
-                    # adjust by the difference in length
+                        $resolvedCommand
+                    )
                     $startAdjustment += ($resolvedCommand.Length - $length)
                 }
             }
@@ -228,7 +206,8 @@ Set-PSReadLineKeyHandler -Key "Ctrl+." `
     }
 }
 
-#* Multiline editing mode. More modern-feeling, but not quite vim. Trying for the sweet spot.
+#* Multiline editing mode. More modern-feeling, but not quite neovim.
+#* I'm trying for a sweet spot between complexity and ease; imo, this is instantly adoptable for daily use.
 
 # We have to check for balanced parenthesis, brackets, and braces.
 # This script takes care of that for us w/ a simple stack (fooled v. easily).
@@ -368,125 +347,118 @@ public class BalancedBrackets {
 }
 "@
 
-# Enter key expands the space in the prompt/buffer semi-intelligently. I call this "multiline" mode.
+# Enter key expands the space in the prompt/buffer semi-intelligently. I call this the "multiline" mode.
 # The cursor automatically centers within the vertical space to give padding while editing. OCD thing.
 # Enter also runs commands, the typical way, when the expression is a complete command.
-# todo: rewrite w/ tokens as appropriate; avoid doing your own string processing.
 Set-PSReadLineKeyHandler -Chord Enter `
     -BriefDescription EnterMultiline `
     -Description 'Insert a newline or validate and run the current command' `
     -ScriptBlock {
-    # Get the current contents of the prompt.
     $line = $cursor = $null;
     [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref] $line, [ref] $cursor);
+    $ast = $tokens = $errors = $cursor = $null
+    [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$ast, [ref]$tokens, [ref]$errors, [ref]$cursor)
 
     if ($line -match '\A[\r\n]*\z') {
         # Buffer state is empty except for newlines
         # Add another newline, then recenter in the buffer; cursor position is biased upwards.
         [Microsoft.PowerShell.PSConsoleReadLine]::InsertLineBelow();
         [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition([Math]::Floor(($line.Length + 1) / 2));
+        return
     }
-    elseif ($line -match '\A[ ]{2}\S') {
+    
+    if ($line -match '\A[ ]{2}(?=\S)' -and $line -notmatch 'Skip-History') {
         # Command is preceded by exactly two spaces
-        # todo: "Bury" command, hiding it from command history
-        # todo: Also do not perform command validation; this is to keep secrets out of error history, logs, etc.
-        [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine();
+        # "Bury" the command; it should not appear in command history or error logs.
+        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($line.Length);
+        [Microsoft.PowerShell.PSConsoleReadLine]::Insert(' | Skip-History'); # included below
+        [Microsoft.PowerShell.PSConsoleReadLine]::ValidateAndAcceptLine();
+        return
     }
-    else {
-        # ! Disregards escaped and commented-out brackets. __Use tokens.__
-        switch ([BalancedBrackets]::testExpression($line)) {
-            1 {
-                # Missing at least one open bracket
-                # -- Display an error and move cursor to "mismatch" location (it tries)
-                [Microsoft.PowerShell.PSConsoleReadLine]::ValidateAndAcceptLine();
-                break
-            }
-            2 {
-                # Missing at least one close bracket
-                # -- Assume the user is still typing out the command
-                # -- Maintain, increase, or decrease the indent level as appropriate
-                $line_current = ($line.Substring(0, $cursor) -split '\n')[-1]
-                $indentation = $line_current -match '^(?<indent>\s*)' ? $Matches.indent : ''
-                $indentation = "`n$indentation"
-                if ($line[$cursor - 1] -in '(', '[', '{') {
-                    $indentation += (' ' * 2)
-                }
-                # todo: missing cases where indentation may need to increase
-                # todo: missing guards where indentation should not decrease
-                # todo: missing cases where indentation should decrease
-                # todo: realign close brackets to indentation level of matching open brackets
-                elseif ($line[$cursor - 1] -in ')', ']', '}') {
-                    $indentation = $indentation.Substring(2)
-                }
-                [Microsoft.PowerShell.PSConsoleReadLine]::Insert($indentation);
-                break
-            }
-            default {
-                # Expression is probably balanced; may have escaped/commented/string brackets.
-                # We test for remaining alternative expansions, otherwise running the normal Enter command.
 
-                if (
-                    $cursor -notin (0, $line.Length) -and
-                    $line.Substring($cursor - 1, 2) -in '()', '[]', '{}' -and
-                    -not (
-                        $line.Substring($cursor - 1, 2) -eq '[]' -and
-                        $line.SubString(0, $cursor) -match '\A(\s*|#[^\n]*(?=\n))\[\]' # why am I guarding comments/whitespace?
-                    )
-                ) {
-                    # Cursor is directly between two brackets, which are not following all-whitespace, nor in a comment.
-                    # Expand between the brackets with newlines and proper indentation.
-                    $line_current = ($line.Substring(0, $cursor) -split '\n')[-1]
-                    $indentation = $line_current -match '^(?<indent>\s*)' ? $Matches.indent : ''
-                    [Microsoft.PowerShell.PSConsoleReadLine]::Insert("`n$indentation  `n$indentation");
-                    [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + $indentation.Length + 3);
-                    return;
-                }
-                
-                if (
-                    $cursor -notin (0, 1, $line.Length) -and
-                    $line.Substring($cursor - 2, 3) -in '@""', "@''"
-                ) {
-                    # We are in a new here-string, which may or may not be closed already.
-                    # Check that the herestring gets closed properly (with "@ or '@).
-                    # Then, insert two newlines between the quotation marks.
-                    if ($close_here = $line.Substring($cursor) -match "\A['`"]@" ? '' : '@') {
-                        # Herestring is missing its closing mark
-                        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 1);
-                        [Microsoft.PowerShell.PSConsoleReadLine]::Insert($close_here);
-                        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor);
-                    }
-                    [Microsoft.PowerShell.PSConsoleReadLine]::Insert("`n`n");
-                    [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 1);
-                    return;
-                }
-
-                # Trim and validate command; command runs if it passes validation.
-                # Non-builtin aliases cause this validation to fail, but can be run with Ctrl+Shift+Enter.
-                $replace = $line -replace '\A\s*|\s*\z', '';
-                [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine(); # does not add to Undo stack
-                [Microsoft.PowerShell.PSConsoleReadLine]::Insert($replace);
-                [Microsoft.PowerShell.PSConsoleReadLine]::ValidateAndAcceptLine();
-            }
+    # ! Disregards escaped and commented-out brackets.
+    if ([BalancedBrackets]::testExpression($line) -eq 2) {
+        # Missing at least one close bracket
+        # Assume the user is still typing out the command; add new lines as appropriate
+        # Maintain, increase, or decrease the indentation level as appropriate
+        $line_current = ($line.Substring(0, $cursor) -split '\n')[-1]
+        $indentation = $line_current -match '^(?<indent>\s*)' ? $Matches.indent : ''
+        $indentation = "`n$indentation"
+        if ($indentation.length -lt 34 -and $line[$cursor - 1] -in '(', '[', '{') {
+            $indentation += (' ' * 2)
         }
+        # todo: missing cases where indentation may need to increase
+        # todo: missing guards where indentation should not decrease
+        # todo: missing cases where indentation should decrease
+        # todo: realign close brackets to indentation level of matching open brackets
+        elseif ($indentation.length -gt 2 -and $line[$cursor - 1] -in ')', ']', '}') {
+            $indentation = $indentation.Substring(2)
+        }
+        [Microsoft.PowerShell.PSConsoleReadLine]::Insert($indentation);
+        return
     }
+
+    # Expression is "probably" balanced; may have escaped/commented/string brackets.
+    if (
+        $cursor -notin (0, $line.Length) -and
+        $line.Substring($cursor - 1, 2) -in '()', '[]', '{}' -and
+        # An index expression following all-whitespace (also checks if in a comment) would throw, so no use expanding it
+        -not (
+            $line.Substring($cursor - 1, 2) -eq '[]' -and
+            $line.SubString(0, $cursor) -match '\A(\s*|#[^\n]*(?=\n))\[\]'
+        )
+    ) {
+        # Cursor is directly between two brackets, which are not an index expression following all-whitespace, nor in a comment.
+        # Expand between the brackets with newlines and proper indentation.
+        $line_current = ($line.Substring(0, $cursor) -split '\n')[-1]
+        $indentation = $line_current -match '^(?<indent>\s*)' ? $Matches.indent : ''
+        [Microsoft.PowerShell.PSConsoleReadLine]::Insert("`n$indentation  `n$indentation");
+        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + $indentation.Length + 3);
+        return;
+    }
+    
+    # Handle herestrings/docstrings
+    if (
+        $cursor -notin (0, 1, $line.Length) -and
+        $line.Substring($cursor - 2, 3) -in '@""', "@''"
+    ) {
+        # We are in a new here-string but don't know if it is properly closed.
+        if ($close_here = $line.Substring($cursor) -match "\A['`"]@" ? '' : '@') {
+            [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 1);
+            [Microsoft.PowerShell.PSConsoleReadLine]::Insert($close_here);
+            [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor);
+        }
+        [Microsoft.PowerShell.PSConsoleReadLine]::Insert("`n`n"); # No indentation.
+        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 1);
+        return;
+    }
+
+    # Trim and validate command; command runs if it passes validation.
+    # Non-builtin aliases cause this validation to fail; these can be run with Ctrl+Shift+Enter.
+    $replace = $line -replace '\A\s*|\s*\z', '';
+    [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine(); # does not add to Undo stack
+    [Microsoft.PowerShell.PSConsoleReadLine]::Insert($replace);
+    [Microsoft.PowerShell.PSConsoleReadLine]::ValidateAndAcceptLine();
 }
 
 # Add indentation support for Shift-Enter (AddLine) and Ctrl+Enter (InsertLineAbove)
 Set-PSReadLineKeyHandler -Chord Shift+Enter `
     -BriefDescription InsertMultiline `
-    -Description 'Move the cursor to a new line at the same indentation, without executing input.' `
+    -Description 'Insert a new line below and move the cursor to the same indentation.' `
     -ScriptBlock {
     $line = $cursor = $null;
     [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref] $line, [ref] $cursor);
 
     $line_current = ($line.Substring(0, $cursor) -split '\n')[-1]
     $indentation = $line_current -match '^(?<indent>\s*)' ? $Matches.indent : ''
+    # todo: in some cases, move to end of line before adding newline ; in what cases?
     [Microsoft.PowerShell.PSConsoleReadLine]::Insert("`n$indentation");
     [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + $indentation.Length + 1);
 }
+
 Set-PSReadLineKeyHandler -Chord Ctrl+Enter `
     -BriefDescription InsertMultilineAbove `
-    -Description 'Insert a new line above and move the cursor to the same indentation, without executing input.' `
+    -Description 'Insert a new line above and move the cursor to the same indentation.' `
     -ScriptBlock {
     $line = $cursor = $null;
     [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref] $line, [ref] $cursor);
@@ -496,25 +468,31 @@ Set-PSReadLineKeyHandler -Chord Ctrl+Enter `
     [Microsoft.PowerShell.PSConsoleReadLine]::BeginningOfLine();
     [Microsoft.PowerShell.PSConsoleReadLine]::Insert("$indentation`n");
     [Microsoft.PowerShell.PSConsoleReadLine]::BackwardChar();
-    # [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + $indentation.Length + 1);
 }
 
 # The Enter key won't run a command which does not validate—but readline does not validate *aliases*.
 # I agree with that. So allow the override here, to keep from having to rewrite valid, aliased commands.
-# You can also run empty commands, etc., this way.
+# You can also run empty commands, etc., this way. Same as before.
 Set-PSReadLineKeyHandler -Chord Ctrl+Shift+Enter `
     -BriefDescription AcceptCommand `
-    -Description 'Run command without validation (e.g. with alias)' `
+    -Description 'Run command without validation (e.g. without resolving aliases)' `
     -ScriptBlock {
     $line = $cursor = $null;
     [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref] $line, [ref] $cursor);
-    if ($line -notmatch '\A[ ]{2}\S') {
-        # todo: bury commands preceded by two spaces
-        $replace = $line -replace '\A\s*|\s*\z', '';
-        [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine();
-        [Microsoft.PowerShell.PSConsoleReadLine]::Insert($replace);
+
+    if ($line -match '\A[ ]{2}(?=\S)' -and $line -notmatch 'Skip-History') {
+        # Command is preceded by exactly two spaces
+        # "Bury" the command; it should not appear in command history or error logs.
+        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($line.Length);
+        [Microsoft.PowerShell.PSConsoleReadLine]::Insert(' | Skip-History'); # included below
+        [Microsoft.PowerShell.PSConsoleReadLine]::ValidateAndAcceptLine();
+        return
     }
-    [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()
+
+    $replace = $line -replace '\A\s*|\s*\z', '';
+    [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine();
+    [Microsoft.PowerShell.PSConsoleReadLine]::Insert($replace);
+    [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine();
 }
 
 # Backspace clears trailing newlines to keep a typewriter-style presentation w/ vertically centered text.
@@ -534,39 +512,37 @@ Set-PSReadLineKeyHandler -Chord Backspace `
 
     # Delete matching braces
     if ($cursor -gt 0) {
-        $toMatch = $null
-        if ($cursor -lt $line.Length) {
-            switch ($line[$cursor]) {
-                '"' { $toMatch = '"'; break }
-                "'" { $toMatch = "'"; break }
-                ')' { $toMatch = '('; break }
-                ']' { $toMatch = '['; break }
-                '}' { $toMatch = '{'; break }
-            }
-            if ($toMatch -and $line[$cursor - 1] -eq $toMatch) {
-                [Microsoft.PowerShell.PSConsoleReadLine]::Delete($cursor - 1, 2)
-                return
-            }
+        $toMatch = switch ($line[$cursor]) {
+            <#case#> '"' { '"'; break }
+            <#case#> "'" { "'"; break }
+            <#case#> ')' { '('; break }
+            <#case#> ']' { '['; break }
+            <#case#> '}' { '{'; break }
+            <#case#> default { $null }
+        }
+        if ($toMatch -and $line[$cursor - 1] -eq $toMatch) {
+            [Microsoft.PowerShell.PSConsoleReadLine]::Delete($cursor - 1, 2)
+            return
         }
     }
-
-    # Nothing to be smart about - just use a Backspace
-    [Microsoft.PowerShell.PSConsoleReadLine]::BackwardDeleteChar();
-
+    
     # If we're backspace-ing a bunch of newlines, recenter the cursor for typewriter-style entry
     if ($line -match '\A[\r\n]+\z') {
-        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition(
-            [Math]::Floor(($line.Length - 1) / 2)
-        );
+        [Microsoft.PowerShell.PSConsoleReadLine]::BackwardDeleteChar();
+        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition([Math]::Floor(($line.Length - 1) / 2));
+        return
     }
+
+    # Nothing left to be smart about.
+    [Microsoft.PowerShell.PSConsoleReadLine]::BackwardDeleteChar();
 }
 
 #* Command History
 
-# Command history via F7. This is your per-session history; see below for global history.
+# Command history via F7. This is your *per-session* command history; see below for global history.
 Set-PSReadLineKeyHandler -Key F7 `
     -BriefDescription History `
-    -LongDescription 'Search the command history and run previous commands' `
+    -LongDescription 'Search your session''s command history and run previous commands' `
     -ScriptBlock {
     # If the console buffer is not empty, use its contents as a search term.
     $pattern = $null;
@@ -574,7 +550,8 @@ Set-PSReadLineKeyHandler -Key F7 `
     if ($pattern) { $pattern = [regex]::Escape($pattern) }
 
     # Filter the command history and display in reverse chronological order.
-    # The user selects commands (Click/Ctrl+Click/...), then finishes with Enter key/click "OK".
+    # The user selects commands (Click/Ctrl+Click/etc.) to insert into buffer (Enter/click "OK")..
+    # This can return an absurd amount of text. I have odd concerns with this, in general.
     (
         Get-History -Count 10000 |
         Where-Object { !$pattern -or $_.CommandLine -match $pattern } |
@@ -582,21 +559,20 @@ Set-PSReadLineKeyHandler -Key F7 `
         Out-GridView -Title "Command History$($pattern ? " (regex = $pattern)" : '')" -PassThru |
         Select-Object -ExpandProperty CommandLine # | Get-Unique # ?
     ) -join "`n`n" |
-    # The key handler finishes by replacing the buffer's contents with the selection, if any.
+    # The key handler finishes by replacing the buffer's contents with the user's selections (if any).
     ForEach-Object {
         # Remove double-spacing between #commented #lines.
-        # Niche issue in my history - you may not have quite as many "newline-surrounded" comments - but this sometimes makes my output look worse.
+        # Niche issue in my history - you may not have so many "newline-surrounded" comments.
         $replace = $_ -replace '(?m)(?<=^[ \t]*#.*$)\n\n(?=^[ \t]*#.*$)', "`n"
-        #! This can return an absurd amount of text.
         [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine();
         [Microsoft.PowerShell.PSConsoleReadLine]::Insert($replace);
     }
 }
 
-# Global command history via Shift + F7. For session history, see above.
+# Global command history via Shift + F7. For session history, see the F7 handler, above.
 Set-PSReadLineKeyHandler -Key Shift+F7 `
     -BriefDescription History `
-    -LongDescription 'Search the command history and run previous commands' `
+    -LongDescription 'Search your global command history and run previous commands' `
     -ScriptBlock {
     # If the console buffer is not empty, use its contents as a search term.
     $pattern = $null;
@@ -645,9 +621,7 @@ Set-PSReadLineKeyHandler -Key Shift+F7 `
 
 #* Hotkeyed commands.
 # Sometimes, you just need hotkeys. But these go a little further than normal.
-# todo: if prompt contains text, copy + clear + re-fill prompt with text; extract to function
 
-# todo: probably don't use ReadKey() - it just sucks
 $global:LocationStacks = [ordered]@{} # ordered to keep "default" stack on top of user-defined
 Set-PSReadLineKeyHandler -Key Ctrl+j `
     -BriefDescription PushOrPopLocation `
@@ -745,16 +719,71 @@ Set-PSReadLineKeyHandler -Key Ctrl+j `
 }
 
 
-# # MODULES
 # # FUNCTIONS
-# I use some private modules, several of the well-known community modules, and some basic data processing.
-# My functions tend to be very minor utility. Anything you use in serious capacity, try to put in a module.
+
+#* Functions tightly coupled to key handlers
+function Get-TokenFromCursor {
+    param($tokens, $cursor)
+    foreach ($token in $tokens) {
+        if ($cursor -lt $token.Extent.StartOffset) { continue }
+        if ($cursor -lt $token.Extent.EndOffset) {
+            $result = $token
+            if ($token = $token -as [StringExpandableToken]) {
+                $nested = Get-TokenFromCursor $token.NestedTokens $cursor
+                if ($nested) { $result = $nested }
+            }
+            return $result
+        }
+    }
+    return $null
+}
+function Get-TokenFromSelection {
+    param($tokens, $start, $length)
+    $end = $start + $length
+    foreach ($token in $tokens) {
+        if ($start -lt $token.Extent.StartOffset) { continue }
+        if ($start -lt $token.Extent.EndOffset) {
+            $result = $token
+            if ($end -eq $result.Extent.EndOffset) { return $result }
+            # Expandable strings can contain other expandable strings, etc., so:
+            if ($token = $token -as [StringExpandableToken]) {
+                $nested = Get-TokenFromSelection $token.NestedTokens $start $length
+                if ($nested) { $result = $nested }
+            }
+            if (
+                $start -eq $result.Extent.StartOffset -and
+                $end -eq $result.Extent.EndOffset
+            ) {
+                Write-Host $result
+                return $result
+            }
+        }
+    }
+    return $null
+}
+function Skip-History {
+    [CmdletBinding()] param([Parameter(ValueFromPipeline = $true)] $o)
+    begin { $history = Get-History }
+    process { $o }
+    end {
+        Clear-History
+        $history | Add-History
+    }
+}
+
 
 # # ALIASES
-# Use sparingly, to spare frustration; these don't work with our command validation.
+# Use sparingly, to spare frustration; these don't work with normal validation.
 # You can use Ctrl+Shift+Enter to run aliased commands that fail to validate on Enter.
+
+#* These aliases can be set with `-Option Private, Readonly, Constant`.
+#* This still allows Ctrl+Shift+Enter to force-run the command but keeps the alias out of any analysis.
 Set-Alias -Name os -Value Out-String -Force
 function Out-StringArray {
     if ($input) { $input | Out-String -Stream } else { Out-String -Stream }
 }
 Set-Alias -Name osa -Value Out-StringArray -Force
+
+#* Aliases for things I have forgotten in the past:
+function Get-RipgrepAlias { Write-Host "$($input.Current ? $input : 'the ripgrep.exe command') => rg" }
+Set-Alias -Name ripgrep -Value Get-RipgrepAlias

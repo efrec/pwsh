@@ -6,11 +6,28 @@ These had no home while I was working on them + setting up this github acct.
 Simple script to set up as a scheduled task.
 Changes both your system and app theme to light mode during the day and to dark mode during darker hours.
 
-#### ConvertTo-AsciiArt
-Image to text art; definitely no longer ASCII-only.
-Runs a comparison of pixel brightness against the relative areas of a list of characters.
-Optionally, runs a comparison of the surrounding pixels/subpixels to match the shapes of asymmetric characters.
-Different fonts have different areas, shapes, and proportions, which will impact the visual quality.
+#### ConvertTo-TextArt
+Provides two functions for producing text art, generally well-suited for images with soft edges/shapes.
+This mini hobby project is now functional enough to recommend to others.
+
+<blockquote>
+<dl>
+
+  <dt>Get-CharacterLuminosityMap</dt>
+  <dd>
+The map function quickly builds a text-art palette for reuse with the text art converter.
+This palette considers the shape and proportions of each character, not just their overall painted area.
+  </dd>
+  
+  <dt>ConvertTo-TextArt</dt>
+  <dd>
+The text art conversion runs a subpixel comparison of the input image against your character map.
+Its -Smoothing parameter allows you to fit more closely on overall pixel brightness, instead of by shape, up to a limit.
+The calculations used in this comparison have been simplified to present a comprehensible algorithm, without too much quality loss, but there is room to improve.
+  </dd>
+  
+</dl>
+</blockquote>
 
 #### CurrentUserAllHosts.ps1
 CurrentUserAllHosts is one of the files that constitutes your pwsh profile.

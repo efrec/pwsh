@@ -22,7 +22,7 @@ This palette considers the shape and proportions of each character, not just the
   <dt>ConvertTo-TextArt</dt>
   <dd>
 The text art conversion runs a subpixel comparison of the input image against your character map.
-Its -Smoothing parameter allows you to fit more closely on overall pixel brightness, instead of by shape, up to a limit.
+Its -&#x2060;Smoothing parameter allows you to fit more closely on overall pixel brightness, instead of by shape, up to a limit.
 The calculations used in this comparison have been simplified to present a comprehensible algorithm, without too much quality loss, but there is room to improve.
   </dd>
   

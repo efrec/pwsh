@@ -173,7 +173,7 @@ function Get-CharacterLuminosityMap {
                 $image.Save($path)
             }
             finally {
-                Write-Host "Artifacts saved to: "$env:USERPROFILE\artifact-*.bmp"
+                Write-Host "Artifacts saved to: '$env:USERPROFILE\artifact-*.bmp'"
                 $memoryStream.Dispose()
                 $image.Dispose()
             }

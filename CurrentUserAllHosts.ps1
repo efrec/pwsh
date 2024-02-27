@@ -1,95 +1,178 @@
-#=============================================================================#
-# CurrentUserAllHosts.ps1 | @efrec | 2023-05-12 | passing 2023-05-12          #
-#=============================================================================#
-# I use my CurrentUserAllHosts profile for consistent dx between hosts.
-# This partial profile focuses particularly on vscode and windows terminal.
-# # Short list of features:
-# (1) Command validation. Enter maps to ValidateAndAcceptLine, not AcceptLine.
-# (2) Smart insert. Auto-indentation and smart paired quotes and braces.
-# (3) Vertical CLI. Enter, Shift+Enter, Ctrl+Enter add (smart) vertical space.
-# (4) Command trimming. Commands are trimmed before running/adding to history.
-# (5) Buried commands. Two spaces before a command suppress it in history.
-
-#requires -version 7;
+#requires -version 6;
 using namespace System.Management.Automation.Language;
 
+#==================================================================================================#
+#=== CurrentUserAllHosts.ps1 | @efrec | 2023-05-12 | passing ======================================#
+#                                                                                                  #
+#  I use the CurrentUserAllHosts partial profile for consistent dx between hosts.                  #
+#  My configuration focuses particularly on vscode and windows terminal.                           #
+#                                                                                                  #
+#  Target features:                                                                                #
+#    Command validation: Enter maps to ValidateAndAcceptLine, not AcceptLine.                      #
+#    Smart insert: Auto-indentation and smart paired quotes and braces.                            #
+#    Vertical CLI: Enter, Shift+Enter, Ctrl+Enter add (smart) vertical space.                      #
+#    Command trimming: Commands are trimmed before running/adding to history.                      #
+#    Buried commands: Two spaces before a command suppress it in history.                          #
+#                                                                                                  #
+#==================================================================================================#
 
-# # ENVIRONMENT, VARIABLES, LOCATIONS
+$currentProfile = 'CurrentUserAllHosts'
 
-# Windows Terminal
-$env:WT_SETTINGS_JSON = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
+
+## ---------------------------------------------------------------------------------------------- ##
+## -- Functions --------------------------------------------------------------------------------- ##
+
+function Install-Dependency {
+    [CmdletBinding()] param ( [hashtable] $Packages )
+
+    $PackageProperties = 'InstallScript', 'ModuleName', 'TestCommand';
+    foreach ($package in $Packages.GetEnumerator()) {
+        $key = $package.Name
+        $properties = $package.Value
+
+        $TestCommand = $properties.TestCommand ?? $key;
+        if ([string]::IsNullOrEmpty($TestCommand)) { continue }
+        if (Get-Command $TestCommand -EA 0) { continue }
+
+        # via module repository
+        if ($properties | ? ModuleName) {
+            $params = @{ Name = $properties.ModuleName }
+            $properties.GetEnumerator() | ? Name -notin $PackageProperties | % { $params += $_ }
+            if ($null -eq (Get-Module $properties.ModuleName -ListAvailable -EA 0)) {
+                Install-Module @params -ErrorAction Continue
+            }
+            Import-Module @params -ErrorAction Continue
+            continue
+        }
+
+        # via package manager
+        if ($properties | ? ChocolateyName) {
+            $params = @('install', $properties.ChocolateyName, '-y')
+            if ($properties.ContainsKey('Version')) {
+                $params += '--version'
+                $params += $properties.Version
+            }
+            choco @params
+            continue
+        }
+
+        # via scriptblock
+        if ($properties | ? InstallScript) {
+            & $properties.InstallScript
+            continue
+        }
+    }
+}
+
+
+## ---------------------------------------------------------------------------------------------- ##
+## -- Environment, Variables, Locations --------------------------------------------------------- ##
+
+# Directories
+$env:Path += ';C:\ProgramData\chocolatey'
+$env:OBSIDIAN_VAULTS = "$env:USERPROFILE\Documents\Vaults\..." <# you'll obviously not use my dir #>
+
+# Windows Terminal variables
+$env:WT_SETTINGS_JSON =
+    "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json";
 $env:WT_TAB_SPACES = 4
 $env:WT_MAX_NESTING = 12
+$env:WT_MAX_NEWLINE = 12
 
-# Directory 
-$env:OBSIDIAN_VAULTS = "$env:USERPROFILE\Documents\Vaults\git-sync"
-
-## PowerShell globals
+# Default parameter values
 $PSDefaultParameterValues = @{
     'Convert*-Json:Depth'       = 100
+    'Select-First:First'        = 1
+    '*:Encoding'                = 'utf8'
     '*-GitHub?*:Owner'          = 'efrec'
-    '*-GitHub?*:RepositoryName' = 'backup'
+    '*-GitHub?*:RepositoryName' = 'lol'
     '*-GitHub?*:Token'          = $env:PSGithubToken | ConvertTo-SecureString
 }
 
 
-# # MODULES, SUBPROFILES
+## ---------------------------------------------------------------------------------------------- ##
+## -- Package Managers, Modules, Commands ------------------------------------------------------- ##
 
-# Module support
-# note: includes change to `refreshenv`
+# Your package managers are not be guaranteed. Start with them.
+$PackageManagers = @{
+    'choco' = @{
+        InstallScript = { iwr -UseBasicParsing -Uri 'https://chocolatey.org/install.ps1' | iex }
+        TestCommand   = 'choco'
+    }
+}
+
+# Packages can install from PSGallery, Chocolatey, or a script.
+# Modules that must run in background must use an import script.
+$Packages = @{
+    'az'         = @{ ChocolateyName = 'azure-cli'                             }
+    'ssh'        = @{ ChocolateyName = 'openssh'                               }
+    'openssl'    = @{ ChocolateyName = 'openssl' ; TestCommand = 'openssl.exe' }
+    'git'        = @{ ChocolateyName = 'git.install'                           }
+    'base64'     = @{ ChocolateyName = 'base64'                                }
+    'node'       = @{ ChocolateyName = 'nodejs-lts'                            }
+    'winscp'     = @{ ChocolateyName = 'winscp'                                }
+    'ripgrep'    = @{ ChocolateyName = 'ripgrep' ; TestCommand = 'rg'          }
+    'docker'     = @{ ChocolateyName = 'docker-desktop'                        }
+    'terraform'  = @{ ChocolateyName = 'terraform'                             }
+    'PSCX'       = @{ ModuleName     = 'Pscx'                                  }
+    'PSGithub'   = @{ ModuleName     = 'PSGithub'                              }
+    'MarkdownPS' = @{ ModuleName     = 'MarkdownPS'                            }
+}
+
+# Here's where all our startup time comes from. It's worth it.
+Install-Dependency $PackageManagers
+Install-Dependency $Packages
+
+# Chocolatey uses a module as a subprofile.
 $chocolateyProfile = "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
 if (Test-Path $chocolateyProfile) { Import-Module "$chocolateyProfile" }
 
-# Modules
-Import-Module 'Pscx'
-Import-Module 'PSGitHub'
-Import-Module 'MarkdownPS'
-# Import-Module 'ClassExplorer'
-# Some modules have to run in the background:
-#?Import-CommandSuite # EditorServicesCommandSuite
-#?Start-Commander # PSCommander
-
-
-# # DOTFILES
-
+# Commands that haven't been put in a module.
 $miscCommands = @{
-    'ConvertTo-MarkdownTable' = "$env:USERPROFILE\Documents\VSCode\admin\profile\ConvertTo-MarkdownTable.ps1"
-    'ConvertTo-TextArt'       = "$env:USERPROFILE\Documents\VSCode\pwsh\display\text-art.ps1"
-    'Get-NewSessionMessage'   = "$env:USERPROFILE\Documents\VSCode\pwsh\display\Get-NewSessionMessage.ps1"
-    'Merge-Hashtable'         = "$env:USERPROFILE\Documents\VSCode\admin\profile\Merge-Hashtable.ps1"
-    'Search-Registry'         = "$env:USERPROFILE\Documents\VSCode\admin\profile\Search-Registry.ps1"
-    'Set-UserKeyHandling'     = "$env:USERPROFILE\Documents\VSCode\pwsh\console\Set-UserKeyHandling.ps1"
-    'Test-XmlFile'            = "$env:USERPROFILE\Documents\VSCode\admin\profile\Test-XmlFile.ps1"
+    'ConvertTo-MarkdownTable' = "$env:USERPROFILE\...\pwsh\profile\ConvertTo-MarkdownTable.ps1"
+    'ConvertTo-TextArt'       = "$env:USERPROFILE\...\pwsh\display\text-art.ps1"
+    'Get-NewSessionMessage'   = "$env:USERPROFILE\...\pwsh\display\Get-NewSessionMessage.ps1"
+    'Merge-Hashtable'         = "$env:USERPROFILE\...\pwsh\profile\Merge-Hashtable.ps1"
+    'Search-Registry'         = "$env:USERPROFILE\...\admin\profile\Search-Registry.ps1"
+    'Set-UserKeyHandling'     = "$env:USERPROFILE\...\pwsh\console\Set-UserKeyHandling.ps1"
+    'Test-XmlFile'            = "$env:USERPROFILE\...\pwsh\profile\Test-XmlFile.ps1"
 }
 $miscCommands.Values | Sort-Object -Unique | ForEach-Object { . $_ }
 
 
-# # PSREADLINE: PROMPT, PREDICTIONS, HISTORY
+## ---------------------------------------------------------------------------------------------- ##
+## -- PSReadLine -------------------------------------------------------------------------------- ##
+
+# While we are at it:
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+
+## -- Prompt, Predictions, History -------------------------------------------------------------- ##
 
 # Prompt
 . "$env:USERPROFILE\Documents\VSCode\admin\profile\prompt.ps1"
 Get-KnownFolders -UseFullNames -SetGlobalVariable | Out-Null
-Set-PSReadLineOption -ContinuationPrompt '' -PromptText '' # idk if empty text is bad here
+Set-PSReadLineOption -ContinuationPrompt '' -PromptText ''
 
-# Command predictions
-# ? this broke all kinds of things; what the hell, pwsh?
+# Command predictions and help
+# On accept-and-execute, this duplicates the command (e.g. `clscls`), so I do not use it anymore:
 # Set-PSReadLineOption -PredictionViewStyle ListView
 
 # Command history
 $commandHistoryHandler = @{
     HistoryNoDuplicates = $false
     HistorySaveStyle    = [Microsoft.PowerShell.HistorySaveStyle]::SaveIncrementally
-    # As of ~mid 2022, PSReadLine implements a competent sensitivity test.
-    # We are going to wrap that method to evaluate a few additional cases.
+    <# As of mid 2022, PSReadLine implements a competent sensitivity test as its default. #>
+    <# We are going to wrap that method and handle a few additional cases around it. #>
     AddToHistoryHandler = {
         param([string] $line)
         <# spammy #> if ($line -in 'exit', 'ls', 'pwd', 'cls', 'clear' ) { return $false }
-        <# buried #> if ($line -match '\A[ ]{2}\S') { return $false }
-        <# assist #> if ($line -match '(?<=^|\b)(?<!\$)(help|get-help|man)(?=\b|$)(?![-:]| *=)') {
-            $sensitive = -not [Microsoft.PowerShell.PSConsoleReadLine]::GetDefaultAddToHistoryOption($line)
+        <# hidden #> if ($line -match '\A[ ]{2}\S') <# 2 spaces hides #> { return $false }
+        <# assist #> if ($line -match <# suppress common help commands, when they're genuine #>
+            '(?<=^|\b)(?<![$-]|(^|\b)set(-variable)? )(help|get-help|man)(?=\b|$)(?![:-]| *=)') {
+            $sensitive = ![Microsoft.PowerShell.PSConsoleReadLine]::GetDefaultAddToHistoryOption($line)
             return $sensitive ? $false : [Microsoft.PowerShell.AddToHistoryOption]::MemoryOnly
         }
-        <# secret #> if ($line -match 'password|asplaintext|securestring|from-secure|to-secure|key|token') {
+        <# secret #> if ($line -match 'password|passphrase|pw|asplaintext|secure|key|token') {
             return [Microsoft.PowerShell.PSConsoleReadLine]::GetDefaultAddToHistoryOption($line)
         }
         <# normal #> return [Microsoft.PowerShell.AddToHistoryOption]::MemoryAndFile
@@ -97,10 +180,9 @@ $commandHistoryHandler = @{
 }
 Set-PSReadLineOption @commandHistoryHandler
 
+## -- Hotkeys ----------------------------------------------------------------------------------- ##
 
-# # PSREADLINE: HOTKEYS
-
-#* General Key Handlers
+# General Key Handlers
 
 # Smart Enter key, paired quotes/brackets, etc.
 Set-UserKeyHandling -ModernMultiline | Out-Null
@@ -113,7 +195,7 @@ $pasteValuesOnlyHandler = @{
     LongDescription  = 'Paste clipboard text as ANSI text. Has an issue with newlines.'
     ScriptBlock      = {
         $values = (Get-Clipboard -Text) -join "`n"
-        #? Newline displays as ^M and messes with arrow key movement.
+        #? Newline displays as ^M and messes with arrow key movement. No idea how to replace.
         [Microsoft.PowerShell.PSConsoleReadLine]::Insert($values)
     }
 }
@@ -213,8 +295,7 @@ $commandHistoryGlobalHandler = @{
 }
 Set-PSReadLineKeyHandler @commandHistoryGlobalHandler
 
-
-#* Hotkeyed Commands
+# Hotkeyed Commands
 
 # Jump directories
 $global:LocationStacks = [ordered]@{}
@@ -225,12 +306,14 @@ $locationStacksHandler = @{
     ScriptBlock      = {
         $line = $cursor = $null
         [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref] $line, [ref] $cursor)
-        
+
         # Usage
         $keys = $global:LocationStacks.Keys | Sort-Object -CaseSensitive
         $usage = "`n    Hit a key to push to that stack"
-        $usage += $keys ? ' or Alt+[' + ($keys -join '|') + '] to pop from that stack' : ' and assign it to this hotkey as a chord (Ctrl+j,key)'
-        $usage += ".`n    [Enter] pushes to the default stack. [Tab] displays all stacks. [Escape] exits."
+        $usage += $keys ?
+        ' or Alt+[' + ($keys -join '|') + '] to pop from that stack.' :
+        ' and assign it to this hotkey as a chord (Ctrl+j,key).'
+        $usage += "`n    [Enter] pushes to the default stack. [Tab] displays all stacks. [Escape] exits."
         [Console]::WriteLine($usage)
 
         # Process
@@ -241,7 +324,7 @@ $locationStacksHandler = @{
         :user_input while ($response = [Console]::ReadKey($true)) {
             # Handle improper input
             if (($response.Modifiers -band [System.ConsoleModifiers]::Control) -ne 0) {
-                $message = "`n    Ctrl+$($response.Key) is not a valid input.`n    Press a key to pushd and hotkey it, or use Alt+key to popd from a key's stack."
+                $message = "`n    Ctrl is not a valid modifier.`n    Press a key to pushd and hotkey it, or use Alt+key to popd from a key's stack."
                 Write-Host $message -NoNewline
                 $prompt += $message
                 continue user_input
@@ -281,7 +364,7 @@ $locationStacksHandler = @{
             # Pop from input location stack
             if ($response.Modifiers -eq [System.ConsoleModifiers]::Alt) {
                 if ([char]$response.Key -notin $global:LocationStacks.Keys) {
-                    $message = "`n    Invalid input. There is not a stack hotkeyed to $($response.Key)."
+                    $message = "`n    There is no stack hotkeyed to $($response.Key)."
                     Write-Host $message -NoNewline
                     $prompt += $message
                     continue user_input
@@ -300,7 +383,7 @@ $locationStacksHandler = @{
 
         # Whiteout and revert everything written to the host.
         Write-Host ""
-        $prompt = ($prompt + "`n`n`n") -replace '\S', ' '
+        $prompt = ($prompt + "`n`n`n") -replace '[^\n\r]', ' '
         [Microsoft.PowerShell.PSConsoleReadLine]::Insert($prompt)
         [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
 
@@ -313,7 +396,10 @@ $locationStacksHandler = @{
 Set-PSReadLineKeyHandler @locationStacksHandler
 
 
-# # ALIASES
+## ---------------------------------------------------------------------------------------------- ##
+## -- Aliases ----------------------------------------------------------------------------------- ##
+
+## -- pwsh -------------------------------------------------------------------------------------- ##
 
 # Shorthands
 Set-Alias -Name 'from-csv'    -Value ConvertFrom-Csv          -Force
@@ -327,22 +413,33 @@ function Out-StringArray { if ($input) { $input | Out-String -Stream } else { Ou
 Set-Alias -Name os  -Value Out-String      -Force
 Set-Alias -Name osa -Value Out-StringArray -Force
 
-# Reminders / slaps
-function Get-RipgrepAlias { Write-Host "$($input.Current ? $input : 'the ripgrep.exe command') => rg" }
-Set-Alias -Name ripgrep -Value Get-RipgrepAlias
+## -- bash -------------------------------------------------------------------------------------- ##
+
+if (-not (Get-Command 'grep' -EA 0)) {
+    function grep { $input | Out-String -stream | Select-String $args }
+}
+
+## -- slaps ------------------------------------------------------------------------------------- ##
+# Not all user behavior can be treated gently. Guards — slap this man.
+
+function Write-RipgrepAliasSlap { Write-Warning "ripgrep => rg, for like forever, come on" }
+Set-Alias -Name ripgrep -Value Write-RipgrepAliasSlap
 
 
-# # CLEANUP
+## ---------------------------------------------------------------------------------------------- ##
+## -- Cleanup ----------------------------------------------------------------------------------- ##
 
 # Remove variables -- for when we inevitably dot-source this file -- beware data loss.
 Remove-Variable -Name (
     '*?Profile?',
     '*?Command?',
-    '*?Handler?'
+    '*?Handler$'
 ) -EA 0
 
 
-# # BANNER
+## ---------------------------------------------------------------------------------------------- ##
+## -- Banner ------------------------------------------------------------------------------------ ##
+
 # Clear the launch logo and insert our own.
 # Use -Force:$true to ignore -NoLogo:$false.
 Get-NewSessionMessage -Force:$(-not (Get-History -Count 1))

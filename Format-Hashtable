@@ -1,0 +1,36 @@
+function Format-HashTable {
+    param (
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [System.Collections.IDictionary[]] $HashTable,
+
+        [ValidateRange(0, [int]::MaxValue)]
+        [int] $Indentation = "`t",
+
+        [ValidateRange(1, [int]::MaxValue)]
+        [int] $Depth = 10,
+
+        [ValidateRange(0, [int]::MaxValue)]
+        [int] $Recurrence = 0
+    )
+
+    $format = $PSStyle.Formatting.TableHeader
+    $reset = $PSStyle.Reset
+
+    if ($Depth -le $Recurrence) { return $null }
+    foreach ($Item in $HashTable) {
+        foreach ($Key in $Item.Keys) {
+            $Value = $Item["$Key"]
+            if (
+                $Value -is [hashtable] -or
+                $Value -is [System.Collections.Specialized.OrderedDictionary]
+            ) {
+                $Key = "$format$Key$reset"
+                Write-Output "$("`t" * $Recurrence)$Key"
+                Format-HashTable -HashTable $Value -Indentation $Indentation -Depth $Depth -Recurrence ($Recurrence + 1)
+            }
+            else {
+                Write-Output "$("`t" * $Recurrence)$Key = $Value"
+            }
+        }
+    }
+}

@@ -76,9 +76,9 @@ function Format-HashTable {
                         Write-Output "$($Indent * $indents)$format$($entry.Key)$tamrof"
                     }
                     # Enter the next recurrence.
-                    Format-HashTable -HashTable $entry.Value -Indent $Indent `
-                        -SkipDepth $SkipDepth -ToDepth $ToDepth -Recurrence ($Recurrence + 1) `
-                        -KeyFilter $KeyFilter -ValueFilter $ValueFilter
+                    Format-HashTable -Recurrence ($Recurrence + 1) `
+                        -HashTable $entry.Value -Indent $Indent `
+                        -SkipDepth $SkipDepth -ToDepth $ToDepth
                 }
                 elseif ($skipped -ge $SkipDepth) {
                     Write-Output "$($Indent * $indents)$($entry.Key) = $($entry.Value ?? 'null')"

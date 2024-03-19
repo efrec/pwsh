@@ -1,4 +1,3 @@
-
 <#
 .SYNOPSIS
 Slice and display nested hashtables and arrays of hashtables. The function allows filters on keys and values, as well.
@@ -28,13 +27,46 @@ A [scriptblock] object with a valid `param` block that is passed IDictionaryEntr
 The character or string used as the basic indentation block. Defaults to a tab.
 
 .EXAMPLE
-Get-Content .\data.json | ConvertFrom-Json -AsHashtable -Depth 100 | Format-Hashtable
+ 
+# Output that makes you want to cry:
+Get-Content .\unit-data.json | ConvertFrom-Json -AsHashtable -Depth 2 | % ToString
+
+# result:
+# System.Collections.Hashtable
+
+# Output that you can read & can use:
+Get-Content .\unit-data.json | ConvertFrom-Json -AsHashtable -Depth 2 | Format-Hashtable
+
+# result:
+# Roughneck (armbrawl)
+#         maxacc = 0.24
+#         blocking = False
+#         maxdec = 0.44
+#         energycost = 6200
+#         metalcost = 310
+#         buildtime = 13500
+#         canfly = True
+#         canmove = True
+#         category = ALL NOTLAND MOBILE WEAPON NOTSUB VTOL NOTSHIP NOTHOVER
+#         collide = True
+#         cruisealtitude = 100
+# ...
+
+.EXAMPLE
+$reusable = Format-Hashtable $data # as [string[]].
+
+.EXAMPLE
+Format-Hashtable $data -SkipDepth 1 -ToDepth 2
+
+.EXAMPLE
+Format-Hashtable $data -ToDepth 5 -KeyFilter {param($k) "$k" -in $keyList}
 
 .NOTES
 I think we all have felt the pain of PowerShell's data exploration and formatting. This function chooses to ignore, completely, the design patterns for formatting output in pwsh. Don't use it to do impressive things. Use it to get work done, which is what admins care about. Contributors could add paging; formatters; output options; and optimize the script's performance.
 #>
 function Format-HashTable {
     [CmdletBinding()]
+    [OutputType([string[]])]
     param (
         [Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName)]
         [System.Collections.IDictionary[]] $HashTable,
@@ -54,7 +86,7 @@ function Format-HashTable {
     $skipped = [Math]::Min($SkipDepth, $Recurrence)
     $indents = $Recurrence - $skipped
 
-    # Keys containing nested hashtables are presented as headers.
+    # Keys containing nested hashtables are presented as mini-headers.
     $format = $PSStyle.Formatting.TableHeader
     $tamrof = $PSStyle.Reset
 
@@ -62,7 +94,6 @@ function Format-HashTable {
 
     if (!$KeyFilter -and !$ValueFilter) {
         # Display the entire range of recurrences.
-        # The $HashTable parameter is actually an array; we index into it first.
         foreach ($table in $HashTable) {
             foreach ($entry in $table.GetEnumerator()) {
                 # When the value is another table, enter the next nesting level.
@@ -92,6 +123,7 @@ function Format-HashTable {
 
     # Display only the key-value pairs that are not removed by the filter(s).
     # If a key is not filtered, but all of its values are, it is not displayed.
+    # The $HashTable parameter is actually an array; we index into it first.
     foreach ($table in $HashTable) {
         foreach ($entry in $table.GetEnumerator()) {
             # When the value is another table, enter the next nesting level.

@@ -1,36 +1,124 @@
+
+<#
+.SYNOPSIS
+Slice and display nested hashtables and arrays of hashtables. The function allows filters on keys and values, as well.
+
+.DESCRIPTION
+Format-Hashtable accepts an array of hashtables and will navigate into any nested hashtables or arrays of hashtables, up to a specified limit. You can skip a number of nesting levels; display only a fixed number of nested levels; and filter on the keys and values independently of one another.
+
+.PARAMETER HashTable
+The data as a hashtable or array of hashtables.
+
+.PARAMETER SkipDepth
+The number of nesting levels to skip. Arrays are not considered nesting levels.
+
+.PARAMETER ToDepth
+The number of nesting levels to display. Levels after the ToDepth (+ SkipDepth) are efficiently ignored.
+
+.PARAMETER Recurrence
+The current depth of nesting. This can be set by the user to display portions of the hashtable indented as though the previous recurrences were also displayed, but without displaying them. Otherwise, leave it alone; it's just used for recursion.
+
+.PARAMETER KeyFilter
+A [scriptblock] object with a valid `param` block that is passed IDictionaryEntry keys. It can do any other processing you like (e.g., `if ($key -eq 'Illegal!') { Write-Warning "Bad key: '$key'." }`), but should also return a true/false for the keys you want to include/exclude.
+
+.PARAMETER ValueFilter
+A [scriptblock] object with a valid `param` block that is passed IDictionaryEntry values. It can do any other processing you like (e.g., `if ($value -eq 'Oh no!') { Write-Warning "Bad value: '$value'." }`), but shouuld also return a true/false for the values you want to include/exclude.
+
+.PARAMETER Indent
+The character or string used as the basic indentation block. Defaults to a tab.
+
+.EXAMPLE
+Get-Content .\data.json | ConvertFrom-Json -AsHashtable -Depth 100 | Format-Hashtable
+
+.NOTES
+I think we all have felt the pain of PowerShell's data exploration and formatting. This function chooses to ignore, completely, the design patterns for formatting output in pwsh. Don't use it to do impressive things. Use it to get work done, which is what admins care about. Contributors could add paging; formatters; output options; and optimize the script's performance.
+#>
 function Format-HashTable {
+    [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName)]
         [System.Collections.IDictionary[]] $HashTable,
-
-        [ValidateRange(0, [int]::MaxValue)]
-        [int] $Indentation = "`t",
-
-        [ValidateRange(1, [int]::MaxValue)]
-        [int] $Depth = 10,
-
-        [ValidateRange(0, [int]::MaxValue)]
-        [int] $Recurrence = 0
+        [ValidateRange(0, [int]::MaxValue)] [int] $SkipDepth = 0,
+        [ValidateRange(0, [int]::MaxValue)] [int] $ToDepth = 100,
+        [ValidateRange(0, [int]::MaxValue)] [int] $Recurrence = 0,
+        [scriptblock] $KeyFilter,
+        [scriptblock] $ValueFilter,
+        [string] $Indent = "`t"
     )
 
-    $format = $PSStyle.Formatting.TableHeader
-    $reset = $PSStyle.Reset
+    # Exit immediately, if we can.
+    $totalDepth = $SkipDepth + $ToDepth
+    if ($Recurrence -gt $totalDepth) { return }
 
-    if ($Depth -le $Recurrence) { return $null }
-    foreach ($Item in $HashTable) {
-        foreach ($Key in $Item.Keys) {
-            $Value = $Item["$Key"]
-            if (
-                $Value -is [hashtable] -or
-                $Value -is [System.Collections.Specialized.OrderedDictionary]
-            ) {
-                $Key = "$format$Key$reset"
-                Write-Output "$("`t" * $Recurrence)$Key"
-                Format-HashTable -HashTable $Value -Indentation $Indentation -Depth $Depth -Recurrence ($Recurrence + 1)
+    # Otherwise, we are still iterating through the (possibly nested) hashtables.
+    $skipped = [Math]::Min($SkipDepth, $Recurrence)
+    $indents = $Recurrence - $skipped
+
+    # Keys containing nested hashtables are presented as headers.
+    $format = $PSStyle.Formatting.TableHeader
+    $tamrof = $PSStyle.Reset
+
+    # -- Loop with no filtering ----------------------------------------------------------------- #
+
+    if (!$KeyFilter -and !$ValueFilter) {
+        # Display the entire range of recurrences.
+        # The $HashTable parameter is actually an array; we index into it first.
+        foreach ($table in $HashTable) {
+            foreach ($entry in $table.GetEnumerator()) {
+                # When the value is another table, enter the next nesting level.
+                if (
+                    $entry.Value -is [hashtable] -or
+                    $entry.Value -is [System.Collections.Specialized.OrderedDictionary] -or
+                    $entry.Value -is [hashtable[]] -or
+                    $entry.Value -is [System.Collections.Specialized.OrderedDictionary[]]
+                ) {
+                    if ($skipped -ge $SkipDepth) {
+                        Write-Output "$($Indent * $indents)$format$($entry.Key)$tamrof"
+                    }
+                    # Enter the next recurrence.
+                    Format-HashTable -HashTable $entry.Value -Indent $Indent `
+                        -SkipDepth $SkipDepth -ToDepth $ToDepth -Recurrence ($Recurrence + 1) `
+                        -KeyFilter $KeyFilter -ValueFilter $ValueFilter
+                }
+                elseif ($skipped -ge $SkipDepth) {
+                    Write-Output "$($Indent * $indents)$($entry.Key) = $($entry.Value ?? 'null')"
+                }
             }
-            else {
-                Write-Output "$("`t" * $Recurrence)$Key = $Value"
+        }
+        return
+    }
+
+    # -- Loop with filtering -------------------------------------------------------------------- #
+
+    # Display only the key-value pairs that are not removed by the filter(s).
+    # If a key is not filtered, but all of its values are, it is not displayed.
+    foreach ($table in $HashTable) {
+        foreach ($entry in $table.GetEnumerator()) {
+            # When the value is another table, enter the next nesting level.
+            # These values aren't tested against the ValueFilter, to simplify writing them.
+            if (
+                $entry.Value -is [hashtable] -or
+                $entry.Value -is [System.Collections.Specialized.OrderedDictionary] -or
+                $entry.Value -is [hashtable[]] -or
+                $entry.Value -is [System.Collections.Specialized.OrderedDictionary[]]
+            ) {
+                if ($skipped -ge $SkipDepth) {
+                    Write-Output "$($Indent * $indents)$format$($entry.Key)$tamrof"
+                }
+                # Enter the next recurrence.
+                Format-HashTable -Recurrence ($Recurrence + 1) `
+                    -HashTable $entry.Value -Indent $Indent `
+                    -SkipDepth $SkipDepth -ToDepth $ToDepth `
+                    -KeyFilter $KeyFilter -ValueFilter $ValueFilter
+            }
+            elseif (
+                $skipped -ge $SkipDepth -and
+                    (!$KeyFilter -or $KeyFilter.Invoke($entry.Key)) -and
+                    (!$ValueFilter -or $ValueFilter.Invoke($entry.Value))
+            ) {
+                Write-Output "$($Indent * $indents)$($entry.Key) = $($entry.Value ?? 'null')"
             }
         }
     }
+
 }

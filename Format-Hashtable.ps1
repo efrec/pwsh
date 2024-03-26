@@ -23,26 +23,26 @@ A [scriptblock] object with a valid `param` block that is passed IDictionaryEntr
 .PARAMETER ValueFilter
 A [scriptblock] object with a valid `param` block that is passed IDictionaryEntry values. It can do any other processing you like (e.g., `if ($value -eq 'Oh no!') { Write-Warning "Bad value: '$value'." }`), but shouuld also return a true/false for the values you want to include/exclude.
 
+.PARAMETER ExpandMatches
+When a key or value is matched by the KeyFilter or the ValueFilter (respectively), show everything underneath that node, even if it is not also matching. This is default behavior; should rework this switch.
+
+.PARAMETER AllMatches
+When a key is not matched by the KeyFilter, keep searching; on any matching key below, ignore the filters on keys above that point.
+
+.PARAMETER NilMatches
+When a key that is not empty contains no remaining values after filtering, show it anyway.
+
 .PARAMETER Indent
 The character or string used as the basic indentation block. Defaults to a tab.
 
-.PARAMETER ShowKeysBelow
-When a key or value is matched by the KeyFilter or the ValueFilter (respectively), show everything underneath that node, even if it is not also matching. I think this is the functionality people would expect; not sure.
-
-.PARAMETER ShowKeysAbove
-When a key is not matched by the KeyFilter, keep searching; on any matching key below, ignore the filters on keys above that point. Like ShowKeysBelow, this may be what users expect from this function.
-
-.PARAMETER ShowEmptyKeys
-When a key that is not empty contains no remaining values after filtering, show it anyway.
-
 .EXAMPLE
-# Output that makes you want to cry:
+# Output that kicks puppies:
 Get-Content .\unit-data.json | ConvertFrom-Json -AsHashtable -Depth 2 | % ToString
 
 # result:
 # System.Collections.Hashtable
 
-# Output that you can read & can use:
+# Output that you can read:
 Get-Content .\unit-data.json | ConvertFrom-Json -AsHashtable -Depth 2 | Format-Hashtable
 
 # result:
@@ -85,7 +85,7 @@ function Format-HashTable {
     [CmdletBinding()]
     [OutputType([string[]])]
     param (
-        [Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName)]
+        [Parameter(Mandatory, ValueFromPipeline)]
         [System.Management.Automation.OrderedHashtable[]] $HashTables,
 
         [Alias("From", "Skip", "SkipDepth")]
@@ -98,11 +98,12 @@ function Format-HashTable {
         [scriptblock] $KeyFilter,
         [scriptblock] $ValueFilter,
 
-        [switch] $ShowKeysBelow,
-        [switch] $ShowKeysAbove,
-        [switch] $ShowEmptyKeys,
+        [switch] $AllMatches,
+        [switch] $ExpandMatches,
+        [switch] $NilMatches,
 
-        [string] $Indent = "`t"
+        [ValidateSet("", " ", "  ", "   ", "    ", "`t")]
+        [string] $Indent = "    "
     )
 
     # Exit immediately, if we can.
@@ -130,7 +131,7 @@ function Format-HashTable {
                     $entry.Value -is [System.Collections.Specialized.OrderedDictionary[]]
                 ) {
                     if ($skipped -ge $FromDepth) {
-                        Write-Output "$($Indent * $indents)$format$($entry.Key)$tamrof"
+                        Write-Output "$( $Indent * $indents )$format$( $entry.Key )$tamrof"
                     }
                     # Enter the next recurrence.
                     Format-HashTable -Depth ($Depth + 1) `
@@ -138,7 +139,7 @@ function Format-HashTable {
                         -FromDepth $FromDepth -ToDepth $ToDepth
                 }
                 elseif ($skipped -ge $FromDepth) {
-                    Write-Output "$($Indent * $indents)$($entry.Key) = $($entry.Value ?? 'null')"
+                    Write-Output "$( $Indent * $indents )$( $entry.Key ) = $( $entry.Value ?? 'null' )"
                 }
             }
         }
@@ -149,13 +150,16 @@ function Format-HashTable {
 
     # Use the search method first, then format the hashtable without filters.
 
-    Search-Tree-DepthFirst -HashTables $HashTables `
-        -SkipNodes $FromDepth -KeepNodes $ToDepth -FromDepth $Depth `
-        -NameFilter $KeyFilter -ValueFilter $ValueFilter `
-        -IncludeEmptyNodes:$ShowEmptyKeys -PreservePaths:$ShowKeysAbove -SortPaths | Format-HashTable
+    Format-HashTable -HashTables $(
+        Search-Tree-DepthFirst -HashTables $HashTables `
+            -SkipNodes $FromDepth -KeepNodes $ToDepth -FromDepth $Depth `
+            -NameFilter $KeyFilter -ValueFilter $ValueFilter `
+            -IncludeEmptyNodes:$NilMatches -PreservePaths:$AllMatches -SortPaths -MergePaths
+    ) -Indent $Indent -NilMatches:$NilMatches
 }
 
 # I give up. It's not that inefficient to separate the two functions.
+# todo: make this at least semi-presentable
 
 function Search-Tree-DepthFirst {
     [CmdletBinding()]
@@ -186,28 +190,30 @@ function Search-Tree-DepthFirst {
         [switch] $SortPaths
     )
 
-    # Guard against deep accesses.
+    # Return early.
 
     if ($KeepNodes -eq 0) { return }
     if ($FromDepth -gt $SkipNodes + $KeepNodes) { return }
 
-    $NameFilter ??= { return $true }
-    $ValueFilter ??= { return $true }
+    # We define several types of filter.
+    # todo: key-value, set, and parent-child filters.
+
+    $NameFilter ??= { return $true }  # todo: not passing to permissive filters.
+    $ValueFilter ??= { return $true } # todo: requires handling null filter params.
     $collectionFilter = {
-        param($coll, $keep)
-        $coll | Where-Object {
-            # "There has to be a better way"
-            $_ -is [hashtable] -or
-            $_ -is [hashtable[]] -or
-            $_ -is [System.Collections.Specialized.OrderedDictionary] -or
-            $_ -is [System.Collections.Specialized.OrderedDictionary[]] -or
-            $_ -is [System.Management.Automation.OrderedHashtable] -or
-            $_ -is [System.Management.Automation.OrderedHashtable[]] -or
-            ($keep -and $ValueFilter.Invoke($_))
-        }
+        param($item, $acceptNode, $skipValues)
+        # Collections can contain subtrees, which sort-of have +0.5 depth.
+        ($acceptNode -or $PreservePaths) -and (
+            $item -is [hashtable] -or $item -is [hashtable[]] -or
+            $item -is [System.Collections.Specialized.OrderedDictionary] -or
+            $item -is [System.Collections.Specialized.OrderedDictionary[]] -or
+            $item -is [ordered] -or $item -is [ordered[]]
+        ) -or
+        # And are otherwise simple collections of values.
+        ($acceptNode -and !$skipValues -and $ValueFilter.Invoke($item))
     }
 
-    # Iterate the top level of the tree. Access subtrees recursively.
+    # Iterate the top level of the tree, and access subtrees recursively.
 
     if (!$MergePaths -and $HashTables.Count -gt 1) {
         $tree = ([System.Management.Automation.OrderedHashtable[]] @{}) * $HashTables.Count
@@ -218,39 +224,42 @@ function Search-Tree-DepthFirst {
     }
 
     $pruneTree = $true
-    $skipping = $SkipNodes -gt $FromDepth
+    $skipping = $FromDepth -lt $SkipNodes
+    $collapseSubnodes = $FromDepth -eq $SkipNodes + $KeepNodes
 
-    Write-Verbose "Starting the depth-first search."
+    Write-Verbose "Starting a depth-first search."
 
     foreach ($table in $HashTables) {
         $pruneTable = $true
 
         $subtree = @{}
         foreach ($node in $table.GetEnumerator()) {
-            $pruneNode = !$NameFilter.Invoke($node.Name) # "Name" can be anything? Or is Key => ToString ?
-            if ($pruneNode -and !$PreservePaths) { continue }
+            $acceptNode = $skipping -or $NameFilter.Invoke($node.Name)
+            if (!$acceptNode -and !$PreservePaths) { continue }
 
             # -- Subtrees ----------------------------------------------------------------------- #
 
+            # todo: there are more types to handle; eg how about invisibly handling enumerators?
+            # todo: eg so we can prefilter: $hash.GetEnumerator() | ? Name -match '^cash' | fht
+
             if (
-                $node.Value -is [hashtable] -or
-                $node.Value -is [hashtable[]] -or
+                $node.Value -is [hashtable] -or $node.Value -is [hashtable[]] -or
                 $node.Value -is [System.Collections.Specialized.OrderedDictionary] -or
                 $node.Value -is [System.Collections.Specialized.OrderedDictionary[]] -or
-                $node.Value -is [System.Management.Automation.OrderedHashtable] -or
-                $node.Value -is [System.Management.Automation.OrderedHashtable[]]
+                $node.Value -is [ordered] -or $node.Value -is [ordered[]]
             ) {
-                Write-Verbose "Accessing subnode ($($node.Name))."
+                Write-Verbose "Accessing subnode ($( $node.Name ))."
 
                 $params = $PSBoundParameters
                 $params.Hashtables = $node.Value
                 $params.FromDepth = $FromDepth + 1
-                if (!$pruneNode) { [void]$params.Remove('NameFilter') }
+                if ($acceptNode -and !$skipping) { [void]$params.Remove('NameFilter') } # ?
 
                 $subnode = Search-Tree-DepthFirst @params
 
                 # IncludeEmptyNodes only includes subnodes that were not empty before filtering:
-                if ($subnode.Count -or ($IncludeEmptyNodes -and $node.Value.Count -gt 0)) {
+                if ($subnode.Count -gt 0 -or ($IncludeEmptyNodes -and $node.Value.Count -gt 0)) {
+                    Write-Verbose "Adding subnode ($( $node.Name ))."
                     $subtree.Add($node.Name, $subnode)
                     $pruneTable = $false
                 }
@@ -260,19 +269,26 @@ function Search-Tree-DepthFirst {
 
             # Collections also may contain subtrees; we cannot skip over them naively.
             # Non-subtree values in collections are filtered individually by the ValueFilter.
+            # Subtrees have to be entered and checked when using PreservePaths, even if pruned.
+
+            # todo: MergePaths on collections.
 
             elseif (
-                $node.Value.GetType() | ForEach-Object {
-                    $_ -ne [string] -and
-                    $_.ImplementedInterfaces -contains [System.Collections.IEnumerable]
-                }
+                $node.Value -isnot [string] -and 
+                $node.Value.GetType().ImplementedInterfaces -contains [System.Collections.IEnumerable]
             ) {
-                Write-Verbose "Accessing collection ($($node.Name))."
+                Write-Verbose "Accessing collection ($( $node.Name ))."
 
-                $values = $node.Value | Where-Object { $collectionFilter.Invoke($_, !$skipping) }
+                $items = $node.Value | Where-Object {
+                    Write-Verbose "Checking item: [$( $_.GetType().Name )] $_."
+                    $collectionFilter.Invoke($_, $acceptNode, $skipping)
+                } | ForEach-Object {
+                    $collapseSubnodes -and $_ -is [hashtable] ? "$format$( $_.Name )$tamrof" : $_
+                }
 
-                if ($values.Count -or ($IncludeEmptyNodes -and $node.Value.Count -gt 0)) {
-                    $subtree.Add($node.Name, $values)
+                if ($items.Count -gt 0 -or ($IncludeEmptyNodes -and $node.Value.Count -gt 0)) {
+                    Write-Verbose "Adding collection: ($( $node.Name ))."
+                    $subtree.Add($node.Name, $items)
                     $pruneTable = $false
                 }
             }
@@ -281,41 +297,49 @@ function Search-Tree-DepthFirst {
 
             # Simple values (and strings) can be filtered and skipped naively.
 
-            elseif (!$skipping -and !$pruneNode) {
-                Write-Verbose "Checking value ($($node.Name), [$($node.Value.GetType() -replace '^.*\.')] $($node.Value))."
+            elseif (!$skipping -and $acceptNode) {
+                Write-Verbose "Checking value: ($( $node.Name ), [$( $node.Value.GetType().Name )] $( $node.Value ))."
 
                 if ($ValueFilter.Invoke($node.Value)) {
                     $subtree.Add($node.Name, $node.Value)
                     $pruneTable = $false
                 }
             }
-
-            # ----------------------------------------------------------------------------------- #
+            else {
+                Write-Verbose "Suppressed: ($( $node.Name ), [$( $node.Value.GetType().Name )] $( $node.Value ))."
+            }
         }
 
         # Process the resulting subtree.
 
         if ($pruneTable) { continue }
 
-        Write-Verbose "Adding subtree to result:`n$subtree"
-
+        Write-Verbose "Adding subtree to result:`n$( $subtree.Keys )"
         $keys = $SortPaths ? ($subtree.Keys | Sort-Object) : $subtree.Keys
 
         if ($MergePaths -or $HashTables.Count -eq 1) {
-            $keys | ForEach-Object { $tree[$_] = $subtree[$_] }
+            $keys | ForEach-Object { $tree.Add($_, $subtree.$_) }
         }
         else {
-            $keys | ForEach-Object { $tree[$ii][$_] = $subtree[$_] }
+            $keys | ForEach-Object { $tree[$ii].Add($_, $subtree.$_) }
             $ii++
         }
-        $subtree = $null
+        $subtree = @{}
     }
 
     # Process the resulting tree.
 
-    if (!$MergePaths -and $HashTables.Count -gt 1) { $tree = $tree | Where-Object { $null -ne $_ } }
+    if (!$MergePaths -and $HashTables.Count -gt 1) {
+        $tree = $tree | Where-Object { $null -ne $_ -and $_.Count -gt 0 }
+    }
 
     if ($tree.Count) { $pruneTree = $false }
 
-    return $pruneTree ? '' : $tree
+    return $pruneTree ? [ordered] @{} : $tree
 }
+
+
+# -- Cleanup and etc ---------------------------------------------------------------------------- #
+
+Set-Alias -Name 'fh' -Value Format-Hashtable
+Set-Alias -Name 'fht' -Value Format-Hashtable
